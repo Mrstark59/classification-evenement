@@ -501,54 +501,46 @@
 <!-- ─── NOTIFICATION ─── -->
 <div class="notif" id="notif">✅ Exposant ajouté avec succès !</div>
  
-<script type="module">
+<!-- Firebase compat SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+ 
+<script>
 // ─── FIREBASE CONFIG ──────────────────────────────────────────────────────────
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+const FIREBASE_URL = 'https://anim-traditions-default-rtdb.europe-west1.firebasedatabase.app';
  
-const firebaseConfig = {
-  apiKey: "AIzaSyDemo-AnimTraditions",
-  databaseURL: "https://anim-traditions-escaudain-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "anim-traditions-escaudain",
-};
- 
-// ─── NOTE: Remplacez les valeurs ci-dessus par votre propre config Firebase ───
-// Voir instructions dans la bannière du site
- 
-// ─── STATE ───────────────────────────────────────────────────────────────────
-let data = { braderie: [], nocturne: [] };
-let currentEntry = null;
-let selectedChoice = null;
 let db = null;
  
-// ─── INIT FIREBASE ────────────────────────────────────────────────────────────
-function initFirebase(config) {
+function initFirebase() {
   try {
-    const app = initializeApp(config);
-    db = getDatabase(app);
-    const dataRef = ref(db, 'exposants');
-    onValue(dataRef, (snapshot) => {
+    const app = firebase.initializeApp({ databaseURL: FIREBASE_URL });
+    db = firebase.database();
+    const dataRef = db.ref('exposants');
+    dataRef.on('value', (snapshot) => {
       const val = snapshot.val();
       if (val && val.braderie !== undefined) {
-        data = val;
-        ['braderie','nocturne'].forEach(t => renderTable(t));
-        showNotif('☁️ Données synchronisées !');
+        data.braderie = val.braderie || [];
+        data.nocturne = val.nocturne || [];
+      } else {
+        data = { braderie: [], nocturne: [] };
       }
+      ['braderie','nocturne'].forEach(t => renderTable(t));
+      document.getElementById('sync-status').innerHTML = '🟢 Synchronisé';
+      document.getElementById('sync-status').style.color = '#4caf50';
+    }, (err) => {
+      console.error('Firebase read error:', err);
+      document.getElementById('sync-status').innerHTML = '🔴 Erreur sync';
     });
-    document.getElementById('sync-status').innerHTML = '🟢 Connecté';
-    document.getElementById('sync-status').style.color = '#4caf50';
   } catch(e) {
-    console.error('Firebase error:', e);
-    document.getElementById('sync-status').innerHTML = '🔴 Non connecté';
+    console.error('Firebase init error:', e);
+    document.getElementById('sync-status').innerHTML = '🔴 Erreur connexion';
   }
 }
  
 function saveData() {
   if (db) {
-    const dataRef = ref(db, 'exposants');
-    set(dataRef, data).catch(e => console.error('Save error:', e));
+    db.ref('exposants').set(data).catch(e => console.error('Save error:', e));
   }
-  // Toujours sauvegarder en local aussi (backup)
   try { localStorage.setItem('animTraditions_data', JSON.stringify(data)); } catch(e) {}
 }
  
@@ -559,8 +551,13 @@ function loadLocalData() {
   } catch(e) { return { braderie: [], nocturne: [] }; }
 }
  
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let data = loadLocalData();
+let currentEntry = null;
+let selectedChoice = null;
+ 
 // ─── TABS ─────────────────────────────────────────────────────────────────────
-window.showTab = function(id, btn) {
+function showTab(id, btn) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -568,17 +565,17 @@ window.showTab = function(id, btn) {
 }
  
 // ─── FORM ─────────────────────────────────────────────────────────────────────
-window.getPaiement = function() {
+function getPaiement() {
   const v = document.getElementById('f-paiement').value;
   return v ? parseFloat(v).toFixed(2) + ' €' : '—';
 }
  
-window.resetForm = function() {
+function resetForm() {
   ['f-nom','f-objet','f-mettrage','f-tel','f-obs','f-paiement'].forEach(id => document.getElementById(id).value = '');
   ['f-kbis','f-ci','f-ass','f-moyen'].forEach(id => document.getElementById(id).value = '');
 }
  
-window.collectForm = function() {
+function collectForm() {
   return {
     nom:      document.getElementById('f-nom').value.trim(),
     objet:    document.getElementById('f-objet').value.trim(),
@@ -594,7 +591,7 @@ window.collectForm = function() {
 }
  
 // ─── MODAL ────────────────────────────────────────────────────────────────────
-window.ouvrirModal = function() {
+function ouvrirModal() {
   const entry = collectForm();
   if (!entry.nom && !entry.objet) {
     showNotif('⚠️ Merci de renseigner au moins le nom ou l'objet !', '#e63946');
@@ -604,24 +601,24 @@ window.ouvrirModal = function() {
   selectedChoice = null;
   document.querySelectorAll('.choice-btn').forEach(b => b.classList.remove('selected'));
   document.getElementById('btn-confirm').disabled = true;
-  const label = entry.nom ? `<strong>${entry.nom}</strong>` : 'Cet exposant';
-  document.getElementById('modal-nom-label').innerHTML = `Choisissez dans quel(s) tableau(x) classer ${label} :`;
+  const label = entry.nom ? '<strong>' + entry.nom + '</strong>' : 'Cet exposant';
+  document.getElementById('modal-nom-label').innerHTML = 'Choisissez dans quel(s) tableau(x) classer ' + label + ' :';
   document.getElementById('modal-overlay').classList.add('open');
 }
  
-window.fermerModal = function() {
+function fermerModal() {
   document.getElementById('modal-overlay').classList.remove('open');
   selectedChoice = null;
 }
  
-window.toggleChoice = function(choice) {
+function toggleChoice(choice) {
   selectedChoice = choice;
   document.querySelectorAll('.choice-btn').forEach(b => b.classList.remove('selected'));
   document.getElementById('btn-' + choice).classList.add('selected');
   document.getElementById('btn-confirm').disabled = false;
 }
  
-window.confirmerClassement = function() {
+function confirmerClassement() {
   if (!selectedChoice || !currentEntry) return;
   const targets = selectedChoice === 'both' ? ['braderie','nocturne'] : [selectedChoice];
   targets.forEach(t => {
@@ -633,11 +630,11 @@ window.confirmerClassement = function() {
   fermerModal();
   resetForm();
   const label = targets.map(t => t === 'braderie' ? 'Braderie' : 'Marché Nocturne').join(' + ');
-  showNotif(`✅ Exposant ajouté dans : ${label}`);
+  showNotif('✅ Exposant ajouté dans : ' + label);
 }
  
 // ─── RENDER TABLE ─────────────────────────────────────────────────────────────
-window.renderTable = function(t) {
+function renderTable(t) {
   const tbody = document.getElementById(t + '-body');
   const list = data[t] || [];
   document.getElementById('badge-' + t).textContent = list.length;
@@ -645,39 +642,40 @@ window.renderTable = function(t) {
     const empty = t === 'braderie'
       ? '<span class="empty-icon">🛒</span>Aucun exposant pour la Braderie'
       : '<span class="empty-icon">🌕</span>Aucun exposant pour le Marché Nocturne';
-    tbody.innerHTML = `<tr><td colspan="12" class="empty-state">${empty}</td></tr>`;
+    tbody.innerHTML = '<tr><td colspan="12" class="empty-state">' + empty + '</td></tr>';
     return;
   }
-  tbody.innerHTML = list.map((e, i) => `
-    <tr data-search="${(e.nom+e.objet).toLowerCase()}">
-      <td><b>${i+1}</b></td>
-      <td><b>${escHtml(e.nom || '—')}</b></td>
-      <td>${escHtml(e.objet || '—')}</td>
-      <td>${e.mettrage !== '—' ? e.mettrage + ' ml' : '—'}</td>
-      <td>${badge(e.kbis)}</td>
-      <td>${badge(e.ci)}</td>
-      <td>${badge(e.ass)}</td>
-      <td>${escHtml(e.tel)}</td>
-      <td style="font-size:.85rem;font-weight:700">${escHtml(e.paiement)}</td>
-      <td>${escHtml(e.moyen || '—')}</td>
-      <td style="font-size:.82rem;max-width:160px">${escHtml(e.obs)}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="supprimerEntry('${t}',${i})">🗑</button></td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = list.map(function(e, i) {
+    return '<tr data-search="' + (e.nom+e.objet).toLowerCase() + '">' +
+      '<td><b>' + (i+1) + '</b></td>' +
+      '<td><b>' + escHtml(e.nom || '—') + '</b></td>' +
+      '<td>' + escHtml(e.objet || '—') + '</td>' +
+      '<td>' + (e.mettrage !== '—' ? e.mettrage + ' ml' : '—') + '</td>' +
+      '<td>' + badge(e.kbis) + '</td>' +
+      '<td>' + badge(e.ci) + '</td>' +
+      '<td>' + badge(e.ass) + '</td>' +
+      '<td>' + escHtml(e.tel) + '</td>' +
+      '<td style="font-size:.85rem;font-weight:700">' + escHtml(e.paiement) + '</td>' +
+      '<td>' + escHtml(e.moyen || '—') + '</td>' +
+      '<td style="font-size:.82rem;max-width:160px">' + escHtml(e.obs) + '</td>' +
+      '<td><button class="btn btn-danger btn-sm" onclick="supprimerEntry('' + t + '',' + i + ')">🗑</button></td>' +
+    '</tr>';
+  }).join('');
 }
  
 function badge(val) {
-  if (val === 'Oui') return `<span style="color:#2a9d8f;font-weight:700">✔ Oui</span>`;
-  if (val === 'Non') return `<span style="color:#e63946;font-weight:700">✘ Non</span>`;
+  if (val === 'Oui') return '<span style="color:#2a9d8f;font-weight:700">✔ Oui</span>';
+  if (val === 'Non') return '<span style="color:#e63946;font-weight:700">✘ Non</span>';
   return '—';
 }
+ 
 function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
  
 // ─── DELETE ───────────────────────────────────────────────────────────────────
-window.supprimerEntry = function(t, i) {
-  if (!confirm(`Supprimer "${data[t][i].nom || 'cet exposant'}" de ce tableau ?`)) return;
+function supprimerEntry(t, i) {
+  if (!confirm('Supprimer "' + (data[t][i].nom || 'cet exposant') + '" de ce tableau ?')) return;
   data[t].splice(i, 1);
   saveData();
   renderTable(t);
@@ -685,24 +683,24 @@ window.supprimerEntry = function(t, i) {
 }
  
 // ─── SEARCH ───────────────────────────────────────────────────────────────────
-window.filterTable = function(tableId, q) {
+function filterTable(tableId, q) {
   const rows = document.querySelectorAll('#' + tableId + ' tbody tr[data-search]');
   const kw = q.toLowerCase().trim();
-  rows.forEach(r => {
+  rows.forEach(function(r) {
     r.style.display = (!kw || r.dataset.search.includes(kw)) ? '' : 'none';
   });
 }
  
-// ─── PRINT ───────────────────────────────────────────────────────────────────
-window.imprimerTableau = function(t) {
+// ─── PRINT ────────────────────────────────────────────────────────────────────
+function imprimerTableau(t) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('print-active'));
   document.getElementById(t).classList.add('print-active');
   window.print();
-  setTimeout(() => document.getElementById(t).classList.remove('print-active'), 1000);
+  setTimeout(function() { document.getElementById(t).classList.remove('print-active'); }, 1000);
 }
  
 // ─── EXPORT / IMPORT ──────────────────────────────────────────────────────────
-window.exporterDonnees = function() {
+function exporterDonnees() {
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], {type:'application/json'});
   const a = document.createElement('a');
@@ -712,14 +710,14 @@ window.exporterDonnees = function() {
   showNotif('📥 Données exportées !');
 }
  
-window.importerDonnees = function() {
+function importerDonnees() {
   const input = document.createElement('input');
   input.type = 'file'; input.accept = '.json';
-  input.onchange = e => {
+  input.onchange = function(e) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => {
+    reader.onload = function(ev) {
       try {
         const parsed = JSON.parse(ev.target.result);
         if (!parsed.braderie || !parsed.nocturne) throw new Error();
@@ -734,47 +732,39 @@ window.importerDonnees = function() {
   input.click();
 }
  
+// ─── CONFIG MODAL ─────────────────────────────────────────────────────────────
+function ouvrirConfig() {
+  document.getElementById('config-overlay').classList.add('open');
+}
+function fermerConfig() {
+  document.getElementById('config-overlay').classList.remove('open');
+}
+function sauvegarderConfig() {
+  fermerConfig();
+  showNotif('✅ Configuration OK !');
+}
+ 
 // ─── NOTIFICATION ─────────────────────────────────────────────────────────────
-window.showNotif = function(msg, bg) {
+function showNotif(msg, bg) {
   const n = document.getElementById('notif');
   n.textContent = msg;
   n.style.background = bg || 'linear-gradient(135deg,#4caf50,#1e88e5)';
   n.classList.add('show');
-  setTimeout(() => n.classList.remove('show'), 3200);
+  setTimeout(function() { n.classList.remove('show'); }, 3200);
 }
  
-// ─── MODAL FERMER ────────────────────────────────────────────────────────────
-document.getElementById('modal-overlay').addEventListener('click', function(e) {
-  if (e.target === this) fermerModal();
+// ─── STARTUP ──────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  ['braderie','nocturne'].forEach(t => renderTable(t));
+  document.getElementById('modal-overlay').addEventListener('click', function(e) {
+    if (e.target === this) fermerModal();
+  });
+  document.getElementById('config-overlay').addEventListener('click', function(e) {
+    if (e.target === this) fermerConfig();
+  });
+  document.getElementById('sync-status').innerHTML = '⏳ Connexion…';
+  initFirebase();
 });
- 
-// ─── CONFIG MODAL ─────────────────────────────────────────────────────────────
-window.ouvrirConfig = function() {
-  document.getElementById('config-overlay').classList.add('open');
-}
-window.fermerConfig = function() {
-  document.getElementById('config-overlay').classList.remove('open');
-}
-window.sauvegarderConfig = function() {
-  const url = document.getElementById('cfg-url').value.trim();
-  const key = document.getElementById('cfg-key').value.trim();
-  if (!url) { showNotif('❌ URL requise !', '#e63946'); return; }
-  localStorage.setItem('firebase_url', url);
-  localStorage.setItem('firebase_key', key);
-  fermerConfig();
-  // Re-init with new config
-  initFirebase({ databaseURL: url, apiKey: key || 'demo' });
-  showNotif('✅ Configuration sauvegardée !');
-}
- 
-// ─── STARTUP ─────────────────────────────────────────────────────────────────
-data = loadLocalData();
-['braderie','nocturne'].forEach(t => renderTable(t));
- 
-// URL Firebase intégrée directement
-const FIREBASE_URL = 'https://anim-traditions-default-rtdb.europe-west1.firebasedatabase.app';
-const savedKey = localStorage.getItem('firebase_key') || '';
-initFirebase({ databaseURL: FIREBASE_URL, apiKey: savedKey || 'demo' });
 </script>
  
 <!-- ─── CONFIG MODAL ─── -->
