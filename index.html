@@ -133,8 +133,8 @@ tbody tr:hover{background:#e8f5e2;}
         <div class="gi full"><label>Observation</label><textarea id="f-obs" placeholder="Informations complementaires..."></textarea></div>
       </div>
       <div class="bgrp">
-        <button class="btn bp" onclick="ouvrirModal()">Classer l exposant</button>
-        <button class="btn bd" onclick="resetForm()">Effacer</button>
+        <button class="btn bp" id="btn-classer" onclick="ouvrirModal()">Classer l exposant</button>
+        <button class="btn bd" onclick="resetForm()">Effacer</button><button class="btn bg" id="btn-annuler-edit" style="display:none" onclick="annulerEdit()">Annuler modif</button>
       </div>
     </div>
   </section>
@@ -366,7 +366,7 @@ function afficher(t) {
     h += '<td style="font-weight:700">'+esc(e.paiement||'')+'</td>';
     h += '<td>'+esc(e.moyen||'')+'</td>';
     h += '<td style="font-size:.8rem">'+esc(e.obs||'')+'</td>';
-    h += '<td><button class="btn bd bsm" data-t="'+t+'" data-i="'+i+'" onclick="suppr(this)">Suppr</button></td>';
+    h += '<td style="display:flex;gap:4px">';h += '<button class="btn bo bsm" data-t="'+t+'" data-i="'+i+'" onclick="modifier(this)">Editer</button>';h += '<button class="btn bd bsm" data-t="'+t+'" data-i="'+i+'" onclick="suppr(this)">Suppr</button>';h += '</td>';
     h += '</tr>';
   }
   tbody.innerHTML = h;
@@ -380,6 +380,62 @@ function badg(v) {
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function modifier(btn) {
+  var t = btn.getAttribute('data-t');
+  var i = parseInt(btn.getAttribute('data-i'));
+  if (!data[t] || !data[t][i]) return;
+  var e = data[t][i];
+  // Pre-fill form
+  document.getElementById('f-nom').value = e.nom || '';
+  document.getElementById('f-objet').value = e.objet || '';
+  document.getElementById('f-mettrage').value = e.mettrage || '';
+  document.getElementById('f-kbis').value = e.kbis || '';
+  document.getElementById('f-ci').value = e.ci || '';
+  document.getElementById('f-ass').value = e.ass || '';
+  document.getElementById('f-tel').value = e.tel || '';
+  document.getElementById('f-paiement').value = e.paiement ? e.paiement.replace(' euro','').trim() : '';
+  document.getElementById('f-moyen').value = e.moyen || '';
+  document.getElementById('f-obs').value = e.obs || '';
+  // Switch to saisie tab
+  document.querySelectorAll('.sec').forEach(function(s){ s.classList.remove('active'); });
+  document.querySelectorAll('.tb').forEach(function(b){ b.classList.remove('active'); });
+  document.getElementById('saisie').classList.add('active');
+  document.querySelector('.tb').classList.add('active');
+  // Store edit context
+  editContext = {t: t, i: i};
+  // Change button label
+  document.getElementById('btn-classer').textContent = 'Mettre a jour';
+  document.getElementById('btn-classer').onclick = function(){ validerModif(); };
+  document.getElementById('btn-annuler-edit').style.display = 'inline-flex';
+  notif('Fiche chargee - modifiez puis cliquez Mettre a jour');
+}
+
+var editContext = null;
+
+function validerModif() {
+  if (!editContext) return;
+  var e = lireForm();
+  var t = editContext.t;
+  var i = editContext.i;
+  data[t][i] = e;
+  data[t].sort(function(a,b){ return (a.nom||'').localeCompare(b.nom||'','fr',{sensitivity:'base'}); });
+  sauver();
+  afficher(t);
+  resetForm();
+  editContext = null;
+  document.getElementById('btn-classer').textContent = 'Classer l exposant';
+  document.getElementById('btn-classer').onclick = function(){ ouvrirModal(); };
+  document.getElementById('btn-annuler-edit').style.display = 'none';
+  // Go to updated table
+  var tabs = document.querySelectorAll('.tb');
+  var idx = ['saisie','braderie','nocturne1','nocturne2'].indexOf(t);
+  document.querySelectorAll('.sec').forEach(function(s){ s.classList.remove('active'); });
+  tabs.forEach(function(b){ b.classList.remove('active'); });
+  document.getElementById(t).classList.add('active');
+  tabs[idx].classList.add('active');
+  notif('Modification enregistree !');
 }
 
 function suppr(btn) {
@@ -434,6 +490,15 @@ function importerDonnees() {
     r.readAsText(f);
   };
   inp.click();
+}
+
+function annulerEdit() {
+  editContext = null;
+  resetForm();
+  document.getElementById('btn-classer').textContent = 'Classer l exposant';
+  document.getElementById('btn-classer').onclick = function(){ ouvrirModal(); };
+  document.getElementById('btn-annuler-edit').style.display = 'none';
+  notif('Modification annulee');
 }
 
 function notif(msg, bg) {
